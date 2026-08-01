@@ -67,6 +67,11 @@ func TestLookupDensity_NewIngredients(t *testing.T) {
 		{"cream of tartar", 4.5, 5.5}, // ~5.0 g/tsp
 		// grain
 		{"cornmeal", 2.5, 3.5}, // ~3.0 g/tsp
+		// hard cheese
+		{"pecorino", 1.6, 2.0}, // ~1.85 g/tsp, matches parmesan
+		// sauces
+		{"pizza sauce", 4.8, 5.6},  // ~5.25 g/tsp
+		{"tomato sauce", 4.8, 5.6}, // ~5.25 g/tsp
 	}
 	for _, c := range cases {
 		d := LookupDensity(c.name)

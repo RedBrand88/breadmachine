@@ -58,6 +58,10 @@ var ingredientDensities = []densityEntry{
 	{"mozzarella", 0.47},
 	{"cheddar", 0.47},
 	{"parmesan", 0.37},
+	{"pecorino", 0.37},
+	// sauces
+	{"pizza sauce", 1.05},
+	{"tomato sauce", 1.05},
 	// seeds — specific first
 	{"sesame seeds", 0.60},
 	{"chia seeds", 0.72},
