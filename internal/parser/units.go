@@ -50,6 +50,8 @@ var unitCanonicals = map[string]string{
 	"cups":         "cup",
 	// legacy variant never in KnownUnits but present in some DB records
 	"tbs": "tbsp",
+	// frontend dropdown offers this spelling; never in KnownUnits
+	"tbls": "tbsp",
 }
 
 // CanonicalUnit returns the canonical abbreviation for a matched unit string.

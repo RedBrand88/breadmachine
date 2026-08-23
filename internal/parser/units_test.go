@@ -107,6 +107,15 @@ func TestCanonicalUnit_LegacyTbs_MapsToTbsp(t *testing.T) {
 	}
 }
 
+func TestCanonicalUnit_LegacyTbls_MapsToTbsp(t *testing.T) {
+	if got := CanonicalUnit("tbls"); got != "tbsp" {
+		t.Errorf("CanonicalUnit(%q) = %q, want %q", "tbls", got, "tbsp")
+	}
+	if got := CanonicalUnit("Tbls"); got != "tbsp" {
+		t.Errorf("CanonicalUnit(%q) = %q, want %q", "Tbls", got, "tbsp")
+	}
+}
+
 func TestCanonicalUnit_Unknown_PassesThrough(t *testing.T) {
 	if got := CanonicalUnit("foobar"); got != "foobar" {
 		t.Errorf("CanonicalUnit(%q) = %q, want input unchanged", "foobar", got)
