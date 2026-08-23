@@ -17,6 +17,24 @@ func makeIng(name, unit string, qty, grams float64) models.Ingredient {
 	}
 }
 
+func TestNormalizeIngredients_TblsUnit_ConvertsAtTablespoonRate(t *testing.T) {
+	// Regression: "Tbls" (the frontend dropdown spelling) used to miss both the
+	// CanonicalUnit and unitToGrams lookups, silently falling back to a ×1
+	// multiplier instead of the correct ×15 (tbsp) rate.
+	ings := []models.Ingredient{
+		makeIng("bread flour", "g", 500, 500),
+		makeIng("butter", "Tbls", 2, 0),
+	}
+	_, result := normalizeIngredients(ings)
+	butter := result[1]
+	if butter.Unit != "tbsp" {
+		t.Errorf("butter unit: want tbsp, got %q", butter.Unit)
+	}
+	if butter.Grams != 30 {
+		t.Errorf("butter grams: want 30 (2 tbsp × 15), got %v", butter.Grams)
+	}
+}
+
 func TestIsGramDominant_AnyMassUnit(t *testing.T) {
 	ings := []models.Ingredient{
 		makeIng("bread flour", "g", 500, 500),
