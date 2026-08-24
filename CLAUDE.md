@@ -22,6 +22,7 @@ Module path: `github.com/BreadBrand/breadmachine`.
 - Test one case: `go test ./internal/parser -run TestParseIngredients_Xyz`
 - Vet: `go vet ./...`
 - Live smoke test (hits real Firestore/Firebase Auth, no writes, no emulator): `go test -tags=live ./handlers/... -run TestLive_FirebaseAdminV4_Smoke` — requires the real service account key; not run as part of `go test ./...`.
+- Emulator-backed handler tests (`handlers/recipe_emulator_test.go`): `./scripts/test-emulators.sh` — spins up local Firestore + Auth emulators via `npx firebase-tools` (no global install, no real GCP project/credentials) and runs the handler tests against them. Requires Node/npm and a JDK on PATH. Skipped automatically (not failed) by plain `go test ./...` when the emulators aren't running.
 - Run locally: `go run main.go` — **requires** a Firebase service account key at the hardcoded path
   `/etc/breadmachine/serviceAccountKey.json` (see `handlers/firebase.go`); `InitFirebase` fatals without
   it, so the server won't start.
