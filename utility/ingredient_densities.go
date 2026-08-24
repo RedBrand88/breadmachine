@@ -62,6 +62,8 @@ var ingredientDensities = []densityEntry{
 	// sauces
 	{"pizza sauce", 1.05},
 	{"tomato sauce", 1.05},
+	// fruit
+	{"blueberries", 0.62},
 	// seeds — specific first
 	{"sesame seeds", 0.60},
 	{"chia seeds", 0.72},

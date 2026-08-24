@@ -43,6 +43,24 @@ func TestLookupDensity_AllFloursFallThroughToCatchAll(t *testing.T) {
 	}
 }
 
+func TestLookupDensity_Blueberries_OneCupIsAboutOneFiftyGrams(t *testing.T) {
+	// Regression: blueberries had no density entry at all, so a recipe
+	// storing them in grams (e.g. "270 g: blueberries") couldn't be
+	// converted to cups for display — see formatIngredientDisplay's
+	// muffin-recipe repro on the frontend.
+	// 1 cup = 240 mL; 1 cup fresh blueberries is conventionally ~148 g,
+	// so density should be ~148/240 = 0.62 g/mL.
+	d := LookupDensity("blueberries")
+	if d == 0 {
+		t.Fatal("blueberries density should be non-zero")
+	}
+	cupML := 240.0
+	grams := cupML * d
+	if grams < 135 || grams > 165 {
+		t.Errorf("1 cup blueberries should be ~148 g, got %.1f g (density=%.3f)", grams, d)
+	}
+}
+
 func TestLookupDensity_NewIngredients(t *testing.T) {
 	cases := []struct {
 		name    string
