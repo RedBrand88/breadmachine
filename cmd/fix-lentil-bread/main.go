@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	firebase "firebase.google.com/go"
+	firebase "firebase.google.com/go/v4"
 	"github.com/BreadBrand/breadmachine/models"
 	"google.golang.org/api/option"
 )
