@@ -2,6 +2,7 @@
 /migrate
 
 *.sh
+!scripts/*.sh
 # Go build cache & temporary files
 *.exe
 *.out
