@@ -16,6 +16,16 @@ func TestParseIngredients_Integer(t *testing.T) {
 	}
 }
 
+func TestParseIngredients_TblsUnit_RecognizedAsTbsp(t *testing.T) {
+	// Regression: "tbls" (the same spelling offered by the frontend's unit
+	// dropdown) was missing from KnownUnits, so pasted recipe text using it
+	// left the unit unmatched entirely.
+	dough, _ := ParseIngredients(doughLines("2 Tbls butter"))
+	if dough[0].Unit != "tbsp" {
+		t.Errorf("expected unit tbsp, got %q", dough[0].Unit)
+	}
+}
+
 func TestParseIngredients_Decimal(t *testing.T) {
 	dough, _ := ParseIngredients(doughLines("2.5 tsp salt"))
 	if dough[0].Quantity != "2.5" {

@@ -17,7 +17,7 @@ var KnownUnits = []string{
 	"ml", "milliliter", "millilitre", "milliliters", "millilitres",
 	"l", "liter", "litre", "liters", "litres",
 	"tsp", "teaspoon", "teaspoons",
-	"tbsp", "tablespoon", "tablespoons",
+	"tbsp", "tablespoon", "tablespoons", "tbls",
 	"cup", "cups",
 	// approximate
 	"pinch", "handful", "dash", "smidge", "sprig", "clove", "slice", "piece", "bunch",
