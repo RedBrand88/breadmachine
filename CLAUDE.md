@@ -21,6 +21,7 @@ Module path: `github.com/BreadBrand/breadmachine`.
 - Test one package: `go test ./internal/parser/...`
 - Test one case: `go test ./internal/parser -run TestParseIngredients_Xyz`
 - Vet: `go vet ./...`
+- Live smoke test (hits real Firestore/Firebase Auth, no writes, no emulator): `go test -tags=live ./handlers/... -run TestLive_FirebaseAdminV4_Smoke` — requires the real service account key; not run as part of `go test ./...`.
 - Run locally: `go run main.go` — **requires** a Firebase service account key at the hardcoded path
   `/etc/breadmachine/serviceAccountKey.json` (see `handlers/firebase.go`); `InitFirebase` fatals without
   it, so the server won't start.
