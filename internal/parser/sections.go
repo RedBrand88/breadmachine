@@ -207,24 +207,33 @@ func matchIngredientSubsection(line string) (string, bool) {
 			continue
 		}
 		if p.phase != "" {
-			return p.phase, true
+			// Named pattern matched (e.g. tangzhong, levain) — return the verbatim source
+			// text (trailing dash/colon stripped), not the lowercased constant, so casing
+			// like "Tangzhong" or "TANGZHONG" survives to the display layer.
+			label := strings.TrimRight(strings.TrimSpace(line), "-–: \t")
+			return label, true
 		}
-		// Derive phase from capture group
+		// Derive phase from capture group, preserving original case.
 		if len(m) > 1 {
-			phase := strings.ToLower(strings.TrimSpace(m[1]))
+			phase := strings.TrimSpace(m[1])
 			phase = strings.TrimRight(phase, "– \t")
 			return phase, true
 		}
 	}
 
-	// Catch-all: short colon-terminated line with no digits is a subsection header.
-	// Handles "Finishes:", "Cheese Naan:", "For serving:", etc.
-	if strings.HasSuffix(line, ":") {
-		name := strings.TrimRight(line, ": \t")
-		if name != "" && !strings.ContainsAny(name, "0123456789") {
-			if words := strings.Fields(name); len(words) >= 1 && len(words) <= 4 {
-				return strings.ToLower(name), true
-			}
+	// Generic fallback: a short (1-4 word) line with no digits, that isn't a known
+	// quantity-less ingredient phrasing ("salt to taste", "for dusting", etc. — see
+	// noQtyPatterns/isNoQtyLine in ingredients.go, same package), is treated as a header.
+	// No colon required. Verbatim text (trailing colon/dash stripped) is returned.
+	//
+	// Known accepted residual risk: a bare short ingredient line with no quantity and no
+	// unit at all (e.g. just "Butter" on its own line) can still be misdetected as a header —
+	// there's nothing left to distinguish it. This is the accepted tradeoff of broadening
+	// detection rather than requiring an exact pattern match for everything.
+	if !strings.ContainsAny(line, "0123456789") && !isNoQtyLine(line) {
+		name := strings.TrimRight(strings.TrimSpace(line), "-–: \t")
+		if words := strings.Fields(name); len(words) >= 1 && len(words) <= 4 {
+			return name, true
 		}
 	}
 
