@@ -1,6 +1,7 @@
 package models
 
 import (
+	"regexp"
 	"strings"
 	"time"
 )
@@ -8,12 +9,12 @@ import (
 type Phase string
 
 const (
-	PhaseDough      Phase = "dough"
-	PhaseScald      Phase = "scald"
-	PhaseTangzhong  Phase = "tangzhong"
-	PhaseYudane     Phase = "yudane"
-	PhaseSoak       Phase = "soak"
-	PhaseAutolyse   Phase = "autolyse"
+	PhaseDough     Phase = "dough"
+	PhaseScald     Phase = "scald"
+	PhaseTangzhong Phase = "tangzhong"
+	PhaseYudane    Phase = "yudane"
+	PhaseSoak      Phase = "soak"
+	PhaseAutolyse  Phase = "autolyse"
 )
 
 type YeastType string
@@ -80,6 +81,19 @@ func isBaseIngredient(name string) bool {
 	return false
 }
 
+// explicitFlourPhases are phase names known to always contribute to baker's-% flour totals,
+// regardless of content. Mirrors internal/parser/ingredients.go's identical map by hand —
+// models doesn't import internal/parser (or vice versa), so keep these in sync manually.
+var explicitFlourPhases = map[string]bool{
+	"dough": true, "": true, "starter build": true, "levain": true, "starter": true,
+	"pre-ferment": true, "final dough": true, "scald": true, "tangzhong": true, "yudane": true,
+}
+
+// reExplicitNonFlourPhase matches phase names known to never contribute to baker's-% flour
+// totals as a whole word within the phase name. Mirrors internal/parser/ingredients.go's
+// identical pattern.
+var reExplicitNonFlourPhase = regexp.MustCompile(`(?i)\b(topping|filling|sauce|pesto)\b`)
+
 // CalculateBakerPercentages computes baker's percentages in place for the given
 // ingredients. Call sites should pass DoughIngredients only — OtherIngredients
 // (toppings, fillings) are not part of baker's math. Base weight is the sum of any
@@ -87,13 +101,26 @@ func isBaseIngredient(name string) bool {
 // cauliflower, chickpea, tapioca). Recipes with no matching base ingredient get
 // zero percentages.
 func CalculateBakerPercentages(ingredients []Ingredient) {
+	phaseHasBase := map[string]bool{}
+	for _, ing := range ingredients {
+		key := strings.ToLower(string(ing.Phase))
+		if explicitFlourPhases[key] || reExplicitNonFlourPhase.MatchString(string(ing.Phase)) {
+			continue
+		}
+		if isBaseIngredient(ing.IngredientName) {
+			phaseHasBase[key] = true
+		}
+	}
+
 	isFlourPhase := func(p Phase) bool {
-		switch strings.ToLower(string(p)) {
-		case "dough", "scald", "tangzhong", "yudane", "starter build", "levain", "final dough", "":
+		key := strings.ToLower(string(p))
+		if explicitFlourPhases[key] {
 			return true
-		default:
+		}
+		if reExplicitNonFlourPhase.MatchString(string(p)) {
 			return false
 		}
+		return phaseHasBase[key]
 	}
 
 	var totalBase float64

@@ -8,9 +8,11 @@ import (
 )
 
 var (
-	reQuantityStart  = regexp.MustCompile(`^\d`)
-	reInstructionNum = regexp.MustCompile(`^\d+[\.\)]\s`)
-	reMetaField      = regexp.MustCompile(`(?i)^(Prep Time|Cook Time|Total Time|Additional Time|Servings|Yield|Category|Cuisine|Diet|Author|Baking Time|Bake Time|Rise Time|Rest Time|Chill Time|Preparation Time)[\s:]+`)
+	reQuantityStart             = regexp.MustCompile(`^\d`)
+	reInstructionNum            = regexp.MustCompile(`^\d+[\.\)]\s`)
+	reMetaField                 = regexp.MustCompile(`(?i)^(Prep Time|Cook Time|Total Time|Additional Time|Servings|Yield|Category|Cuisine|Diet|Author|Baking Time|Bake Time|Rise Time|Rest Time|Chill Time|Preparation Time)[\s:]+`)
+	reTrailingIngredientsSuffix = regexp.MustCompile(`(?i)\s+ingredients\s*$`)
+	reHasDigit                  = regexp.MustCompile(`\d`)
 )
 
 // sectionKeywords are only matched when they are the SOLE content of a line.
@@ -37,7 +39,7 @@ var ingredientSubsectionPatterns = []struct {
 	{regexp.MustCompile(`(?i)^scald\s*[-–]?$`), "scald"},
 	{regexp.MustCompile(`(?i)^tangzhong\s*[-–]?$`), "tangzhong"},
 	{regexp.MustCompile(`(?i)^yudane\s*[-–]?$`), "yudane"},
-	{regexp.MustCompile(`(?i)^for\s+the\s+(.+?)\s*[-–]?$`), ""},  // derive from capture
+	{regexp.MustCompile(`(?i)^for\s+the\s+(.+?)\s*[-–]?$`), ""}, // derive from capture
 	{regexp.MustCompile(`(?i)^(.+?)\s+ingredients\s*[-–]?$`), ""},
 	{regexp.MustCompile(`(?i)^(topping|filling|sauce|pesto)\s*[-–]?$`), ""},
 }
@@ -45,6 +47,35 @@ var ingredientSubsectionPatterns = []struct {
 var bakersPctPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)baker'?s\s+percentages?`),
 	regexp.MustCompile(`(?i)baker'?s\s+%`),
+}
+
+// lowerConnectors are short words skipped when checking title case, so
+// "Main Dough" and "For the Pesto" style headers don't need every word capitalized.
+var lowerConnectors = map[string]bool{
+	"of": true, "the": true, "and": true, "a": true, "an": true,
+	"in": true, "on": true, "to": true, "or": true, "for": true, "&": true,
+}
+
+// looksLikeTitleCase reports whether every significant word (i.e. not a short
+// connector) starts with an uppercase letter. Real subsection headers in these
+// recipes are reliably Title Case ("Main Dough", "Stiff Sweet Starter"); bare
+// ingredient references are sentence-case (only the line's first word
+// capitalized, e.g. "Pinch of salt", "Olive oil") — this is what lets the
+// generic fallback tell them apart.
+func looksLikeTitleCase(line string) bool {
+	words := strings.Fields(line)
+	significant, capped := 0, 0
+	for _, w := range words {
+		if lowerConnectors[strings.ToLower(w)] {
+			continue
+		}
+		significant++
+		r, _ := utf8.DecodeRuneInString(w)
+		if unicode.IsUpper(r) {
+			capped++
+		}
+	}
+	return significant > 0 && capped == significant
 }
 
 // DetectSections parses a normalised recipe string into a SectionMap.
@@ -70,6 +101,41 @@ func DetectSections(cleaned string) SectionMap {
 	var currentGroup *IngredientGroup
 	skipBakersPct := false
 
+	var pendingPhase string
+	var pendingLines []string
+	hasPending := false
+
+	flushPending := func() {
+		if !hasPending {
+			return
+		}
+		confirmed := false
+		for _, l := range pendingLines {
+			if reHasDigit.MatchString(l) {
+				confirmed = true
+				break
+			}
+		}
+		if confirmed {
+			sm.IngredientGroups = discardEmptyGroups(sm.IngredientGroups)
+			g := IngredientGroup{Phase: pendingPhase, Lines: pendingLines}
+			sm.IngredientGroups = append(sm.IngredientGroups, g)
+			currentGroup = &sm.IngredientGroups[len(sm.IngredientGroups)-1]
+		} else {
+			if currentGroup == nil {
+				g := IngredientGroup{Phase: "dough"}
+				sm.IngredientGroups = append(sm.IngredientGroups, g)
+				currentGroup = &sm.IngredientGroups[len(sm.IngredientGroups)-1]
+			}
+			currentGroup.Lines = append(currentGroup.Lines, pendingPhase)
+			currentGroup.Lines = append(currentGroup.Lines, pendingLines...)
+			currentGroup = &sm.IngredientGroups[len(sm.IngredientGroups)-1]
+		}
+		pendingPhase = ""
+		pendingLines = nil
+		hasPending = false
+	}
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		lowerTrimmed := strings.ToLower(strings.Trim(trimmed, ":– \t"))
@@ -91,6 +157,7 @@ func DetectSections(cleaned string) SectionMap {
 						currentGroup = &sm.IngredientGroups[len(sm.IngredientGroups)-1]
 					}
 				case "instructions":
+					flushPending()
 					current = secInstructions
 					currentGroup = nil
 					sm.IngredientGroups = discardEmptyGroups(sm.IngredientGroups)
@@ -110,6 +177,7 @@ func DetectSections(cleaned string) SectionMap {
 					currentGroup = &sm.IngredientGroups[len(sm.IngredientGroups)-1]
 				}
 			case "instructions":
+				flushPending()
 				current = secInstructions
 				currentGroup = nil
 				sm.IngredientGroups = discardEmptyGroups(sm.IngredientGroups)
@@ -149,11 +217,22 @@ func DetectSections(cleaned string) SectionMap {
 				continue
 			}
 			// Check for subsection header
-			if phase, ok := matchIngredientSubsection(trimmed); ok {
+			if phase, ok, deferable := matchIngredientSubsection(trimmed); ok {
+				flushPending()
+				if deferable {
+					pendingPhase = phase
+					pendingLines = nil
+					hasPending = true
+					continue
+				}
 				sm.IngredientGroups = discardEmptyGroups(sm.IngredientGroups)
 				g := IngredientGroup{Phase: phase}
 				sm.IngredientGroups = append(sm.IngredientGroups, g)
 				currentGroup = &sm.IngredientGroups[len(sm.IngredientGroups)-1]
+				continue
+			}
+			if hasPending {
+				pendingLines = append(pendingLines, trimmed)
 				continue
 			}
 			if currentGroup == nil {
@@ -183,6 +262,7 @@ func DetectSections(cleaned string) SectionMap {
 	}
 
 	// Final cleanup
+	flushPending()
 	sm.IngredientGroups = discardEmptyGroups(sm.IngredientGroups)
 
 	// Cap description at 2000 chars at last sentence boundary
@@ -200,35 +280,61 @@ func isBakersPctHeader(line string) bool {
 	return false
 }
 
-func matchIngredientSubsection(line string) (string, bool) {
+// matchIngredientSubsection checks whether line is a subsection header. The third return
+// value, deferable, is true only for a no-colon generic-fallback match (title case, no
+// hand-listed pattern) — these are buffered by the caller rather than trusted immediately,
+// because a bare title-case ingredient line looks identical to a real header until we see
+// whether real content follows it. Colon-terminated and named/capture-derived matches are
+// never deferable — a trailing colon or a recognized pattern is strong enough evidence to
+// trust immediately, exactly as before this feature existed.
+func matchIngredientSubsection(line string) (phase string, ok bool, deferable bool) {
 	for _, p := range ingredientSubsectionPatterns {
 		m := p.pattern.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
 		if p.phase != "" {
-			return p.phase, true
+			// Named pattern matched (e.g. tangzhong, levain) — return the verbatim source
+			// text (trailing dash/colon stripped), not the lowercased constant, so casing
+			// like "Tangzhong" or "TANGZHONG" survives to the display layer. Strip an
+			// optional trailing "Ingredients" suffix (only the "final dough (ingredients)?"
+			// pattern allows this) so the label still equals its tier-1/tier-2 canonical
+			// form for classification purposes.
+			label := strings.TrimRight(strings.TrimSpace(line), "-–: \t")
+			label = reTrailingIngredientsSuffix.ReplaceAllString(label, "")
+			return label, true, false
 		}
-		// Derive phase from capture group
+		// Derive phase from capture group, preserving original case.
 		if len(m) > 1 {
-			phase := strings.ToLower(strings.TrimSpace(m[1]))
+			phase := strings.TrimSpace(m[1])
 			phase = strings.TrimRight(phase, "– \t")
-			return phase, true
+			return phase, true, false
 		}
 	}
 
-	// Catch-all: short colon-terminated line with no digits is a subsection header.
-	// Handles "Finishes:", "Cheese Naan:", "For serving:", etc.
-	if strings.HasSuffix(line, ":") {
-		name := strings.TrimRight(line, ": \t")
-		if name != "" && !strings.ContainsAny(name, "0123456789") {
-			if words := strings.Fields(name); len(words) >= 1 && len(words) <= 4 {
-				return strings.ToLower(name), true
+	// Generic fallback: a short (1-4 word) line with no digits, that isn't a known
+	// quantity-less ingredient phrasing (noQtyPatterns/isNoQtyLine in ingredients.go, same
+	// package). A trailing colon is trusted immediately (strong, unambiguous signal — this
+	// was the entire detection mechanism before this feature). Without a colon, the line
+	// must also be Title Case, AND is only tentatively accepted (deferable=true) — bare
+	// ingredient references are sentence-case ("Pinch of salt") but some are genuinely Title
+	// Case too ("Olive Oil"), so the caller must see whether real content follows before
+	// trusting it.
+	if !strings.ContainsAny(line, "0123456789") && !isNoQtyLine(line) {
+		trimmedLine := strings.TrimSpace(line)
+		hasColon := strings.HasSuffix(trimmedLine, ":")
+		name := strings.TrimRight(trimmedLine, "-–: \t")
+		if words := strings.Fields(name); len(words) >= 1 && len(words) <= 4 {
+			if hasColon {
+				return name, true, false
+			}
+			if looksLikeTitleCase(name) {
+				return name, true, true
 			}
 		}
 	}
 
-	return "", false
+	return "", false, false
 }
 
 func isInstructionSubHeader(line string) bool {

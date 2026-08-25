@@ -208,6 +208,9 @@ func TestParseIngredients_ArrayRouting_StarterBuild_ToDough(t *testing.T) {
 	if len(other) != 1 {
 		t.Errorf("pesto should route to otherIngredients, got %d", len(other))
 	}
+	if dough[0].Phase != "starter build" || dough[1].Phase != "starter build" {
+		t.Errorf("expected phase 'starter build' preserved, got %q, %q", dough[0].Phase, dough[1].Phase)
+	}
 	if other[0].Phase != "pesto" {
 		t.Errorf("expected phase 'pesto', got %q", other[0].Phase)
 	}
@@ -266,6 +269,27 @@ func TestParseIngredients_ToppingPhaseSection_RoutesToOther(t *testing.T) {
 	}
 	if len(other) != 1 || other[0].Phase != "topping" {
 		t.Errorf("expected 1 other with phase 'topping', got %+v", other)
+	}
+}
+
+func TestParseIngredients_WordBoundaryNonFlourPhase_StreuselTopping_RoutesToOther(t *testing.T) {
+	// "Streusel Topping" doesn't exact-match the tier-2 list, but contains "topping" as a
+	// whole word — must still be excluded from dough/flour totals even though it legitimately
+	// contains flour (streusel is not part of the bread dough system).
+	groups := []IngredientGroup{
+		{Phase: "Streusel Topping", Lines: []string{"60 g flour", "40 g butter", "40 g sugar"}},
+	}
+	dough, other := ParseIngredients(groups)
+	if len(dough) != 0 {
+		t.Errorf("expected 0 dough ingredients, got %d", len(dough))
+	}
+	if len(other) != 3 {
+		t.Errorf("expected 3 other ingredients, got %d", len(other))
+	}
+	for _, o := range other {
+		if o.Phase != "Streusel Topping" {
+			t.Errorf("expected verbatim phase 'Streusel Topping', got %q", o.Phase)
+		}
 	}
 }
 
@@ -429,8 +453,12 @@ func TestParseIngredients_Scald_RoutesToDough(t *testing.T) {
 	if len(other) != 0 {
 		t.Errorf("expected 0 other ingredients, got %d", len(other))
 	}
-	// Phase is intentionally not preserved for dough ingredients (otherIngredients only).
-	// Baker's percentages work because isFlourPhase("") returns true.
+	if dough[0].Phase != "dough" || dough[1].Phase != "dough" {
+		t.Errorf("expected phase 'dough' preserved on first group, got %q, %q", dough[0].Phase, dough[1].Phase)
+	}
+	if dough[2].Phase != "scald" || dough[3].Phase != "scald" {
+		t.Errorf("expected phase 'scald' preserved on second group, got %q, %q", dough[2].Phase, dough[3].Phase)
+	}
 }
 
 func TestParseIngredients_Tangzhong_RoutesToDough(t *testing.T) {
@@ -443,6 +471,9 @@ func TestParseIngredients_Tangzhong_RoutesToDough(t *testing.T) {
 	}
 	if len(other) != 0 {
 		t.Errorf("expected 0 other ingredients, got %d", len(other))
+	}
+	if dough[0].Phase != "tangzhong" || dough[1].Phase != "tangzhong" {
+		t.Errorf("expected phase 'tangzhong' preserved, got %q, %q", dough[0].Phase, dough[1].Phase)
 	}
 }
 
@@ -470,5 +501,62 @@ func TestParseIngredients_CheckboxPrefix_Stripped(t *testing.T) {
 		if !d.ParseOK {
 			t.Errorf("line=%q: expected ParseOK=true", c.line)
 		}
+	}
+}
+
+func TestParseIngredients_UnrecognizedPhase_WithFlour_RoutesToDough(t *testing.T) {
+	// A never-seen-before header ("Stiff Sweet Starter") isn't in the explicit phase lists.
+	// It must still route to dough because its ingredients actually contain flour.
+	groups := []IngredientGroup{
+		{Phase: "Stiff Sweet Starter", Lines: []string{
+			"15 g sourdough starter", "15 g honey", "30 g water", "60 g bread flour",
+		}},
+	}
+	dough, other := ParseIngredients(groups)
+	if len(dough) != 4 {
+		t.Errorf("expected 4 dough ingredients, got dough=%d other=%d", len(dough), len(other))
+	}
+	if len(other) != 0 {
+		t.Errorf("expected 0 other ingredients, got %d", len(other))
+	}
+	for _, d := range dough {
+		if d.Phase != "Stiff Sweet Starter" {
+			t.Errorf("expected verbatim phase 'Stiff Sweet Starter', got %q", d.Phase)
+		}
+	}
+}
+
+func TestParseIngredients_UnrecognizedPhase_NoFlour_RoutesToOther(t *testing.T) {
+	// A never-seen-before header with no flour-like ingredient must route to other,
+	// regardless of what the header is named. This is the case that broke the earlier
+	// "default everything to flour" approach: real recipes have named sections
+	// (roasted vegetables, glazes) with no flour at all.
+	groups := []IngredientGroup{
+		{Phase: "Roasted Pepper", Lines: []string{
+			"1 bell pepper, cut into chunks", "Olive oil", "Salt & pepper",
+		}},
+	}
+	dough, other := ParseIngredients(groups)
+	if len(dough) != 0 {
+		t.Errorf("expected 0 dough ingredients, got %d", len(dough))
+	}
+	if len(other) != 3 {
+		t.Errorf("expected 3 other ingredients, got %d", len(other))
+	}
+	for _, o := range other {
+		if o.Phase != "Roasted Pepper" {
+			t.Errorf("expected verbatim phase 'Roasted Pepper', got %q", o.Phase)
+		}
+	}
+}
+
+func TestParseIngredients_UnrecognizedPhase_VerbatimCasePreserved(t *testing.T) {
+	// Verbatim display means original casing survives, not a lowercased constant.
+	groups := []IngredientGroup{
+		{Phase: "Main Dough", Lines: []string{"575 g high-protein bread flour"}},
+	}
+	dough, _ := ParseIngredients(groups)
+	if dough[0].Phase != "Main Dough" {
+		t.Errorf("expected verbatim phase 'Main Dough', got %q", dough[0].Phase)
 	}
 }

@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	reQuantityAnchor  = regexp.MustCompile(`^(\d+\s+\d+/\d+|\d+(?:\.\d*)?(?:/\d+)?)\s*`)
-	reLeadingParen    = regexp.MustCompile(`^\([^)]*\)\s*`)
-	reBulletPrefix    = regexp.MustCompile(`^[-*•—–]\s+`)
-	reCheckboxPrefix  = regexp.MustCompile(`^[▢□☐]\s*`)
+	reQuantityAnchor = regexp.MustCompile(`^(\d+\s+\d+/\d+|\d+(?:\.\d*)?(?:/\d+)?)\s*`)
+	reLeadingParen   = regexp.MustCompile(`^\([^)]*\)\s*`)
+	reBulletPrefix   = regexp.MustCompile(`^[-*•—–]\s+`)
+	reCheckboxPrefix = regexp.MustCompile(`^[▢□☐]\s*`)
 	reCrossRef       = regexp.MustCompile(`(?i)\s*(from the build above|see note|recipe follows|from above)\s*`)
 	reToppingLine    = regexp.MustCompile(`(?i)\btopping\b`)
 )
@@ -25,8 +25,9 @@ var noQtyPatterns = []*regexp.Regexp{
 
 var adjectivePrefixes = []string{"bubbly", "active", "ripe", "fresh", "large", "medium", "small"}
 
-// doughPhases routes IngredientGroup phases to doughIngredients.
-var doughPhases = map[string]bool{
+// explicitFlourPhases are phase names known to always contribute to baker's-% flour totals,
+// regardless of their ingredient content. Unchanged from the old doughPhases allow-list.
+var explicitFlourPhases = map[string]bool{
 	"dough":         true,
 	"":              true,
 	"starter build": true,
@@ -39,21 +40,61 @@ var doughPhases = map[string]bool{
 	"yudane":        true,
 }
 
-// ParseIngredients parses all IngredientGroups and routes each line to either
-// the dough slice (bread-related phases) or the other slice (everything else).
-// Individual lines containing "topping" are routed to other regardless of group phase.
+// reExplicitNonFlourPhase matches phase names known to never contribute to baker's-% flour
+// totals as a whole word within the phase name (e.g. "Streusel Topping" matches "topping"),
+// not just when the phase name equals one of these words exactly.
+var reExplicitNonFlourPhase = regexp.MustCompile(`(?i)\b(topping|filling|sauce|pesto)\b`)
+
+// baseIngredientKeywords mirrors models.baseIngredientKeywords (models/recipe.go). Kept as a
+// small local copy since internal/parser deliberately doesn't import models (pure text→DTO layer,
+// no persistence-model dependency) — see Global Constraints in the plan this task came from.
+var baseIngredientKeywords = []string{"flour", "lentil", "oat", "cauliflower", "chickpea", "tapioca"}
+
+// classifyPhase decides whether a group counts toward baker's-% flour totals. Tier 1/2 are
+// exact, pre-existing, hardcoded phase names (case-insensitive). Tier 3 — anything else, e.g. an
+// arbitrary header like "Stiff Sweet Starter" or "Roasted Pepper" — is decided by content: does
+// any ingredient in the group actually look like flour, not by guessing from the header text.
+func classifyPhase(phase string, dtos []IngredientDTO) bool {
+	lower := strings.ToLower(phase)
+	if explicitFlourPhases[lower] {
+		return true
+	}
+	if reExplicitNonFlourPhase.MatchString(phase) {
+		return false
+	}
+	for _, d := range dtos {
+		name := strings.ToLower(d.IngredientName)
+		for _, kw := range baseIngredientKeywords {
+			if strings.Contains(name, kw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ParseIngredients parses all IngredientGroups and routes each line to either the dough slice
+// or the other slice, based on classifyPhase. Individual lines containing "topping" are routed
+// to other regardless of group classification (unchanged special case).
 func ParseIngredients(groups []IngredientGroup) (dough []IngredientDTO, other []IngredientDTO) {
 	for _, group := range groups {
-		for _, line := range group.Lines {
-			dto := parseIngredientLine(line)
+		dtos := make([]IngredientDTO, len(group.Lines))
+		for i, line := range group.Lines {
+			dtos[i] = parseIngredientLine(line)
+		}
+		groupIsFlour := classifyPhase(group.Phase, dtos)
+		for i, line := range group.Lines {
+			dto := dtos[i]
 			phase := group.Phase
-			if doughPhases[phase] && reToppingLine.MatchString(line) {
+			isFlour := groupIsFlour
+			if isFlour && reToppingLine.MatchString(line) {
 				phase = "topping"
+				isFlour = false
 			}
-			if doughPhases[phase] {
+			dto.Phase = phase
+			if isFlour {
 				dough = append(dough, dto)
 			} else {
-				dto.Phase = phase
 				other = append(other, dto)
 			}
 		}

@@ -232,3 +232,38 @@ func TestParse_JustAPinchVolumeOnly(t *testing.T) {
 		t.Errorf("expected 0 otherIngredients, got %d", len(dto.OtherIngredients))
 	}
 }
+
+func TestParse_SourdoughWonderBread_NamedSubsectionsPreservedVerbatim(t *testing.T) {
+	dto, err := Parse(loadFixture(t, "sourdough_wonder_bread.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	phases := map[string]int{}
+	for _, ing := range dto.DoughIngredients {
+		phases[ing.Phase]++
+	}
+
+	if phases["Stiff Sweet Starter"] != 4 {
+		t.Errorf("expected 4 ingredients phased 'Stiff Sweet Starter', got %d (phases: %v)", phases["Stiff Sweet Starter"], phases)
+	}
+	if phases["Tangzhong"] != 2 {
+		t.Errorf("expected 2 ingredients phased 'Tangzhong', got %d (phases: %v)", phases["Tangzhong"], phases)
+	}
+	if phases["Main Dough"] != 8 {
+		t.Errorf("expected 8 ingredients phased 'Main Dough', got %d (phases: %v)", phases["Main Dough"], phases)
+	}
+
+	if len(dto.OtherIngredients) != 0 {
+		t.Errorf("expected no otherIngredients (every section contains flour), got %d: %+v", len(dto.OtherIngredients), dto.OtherIngredients)
+	}
+
+	// The two back-reference lines ("All of the stiff sweet starter/tangzhong from above")
+	// must not be misdetected as new headers — if they were, an unexpected phase key would
+	// show up here instead of being absorbed into "Main Dough" as (failed) ingredient lines.
+	for phase := range phases {
+		if phase != "Stiff Sweet Starter" && phase != "Tangzhong" && phase != "Main Dough" {
+			t.Errorf("unexpected phase %q detected — possible back-reference-line header misdetection", phase)
+		}
+	}
+}

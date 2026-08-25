@@ -122,7 +122,7 @@ func TestDetectSections_ColonSubsection_Finishes_RoutesToOther(t *testing.T) {
 	if sm.IngredientGroups[0].Phase != "dough" || len(sm.IngredientGroups[0].Lines) != 1 {
 		t.Errorf("group 0: got phase=%q lines=%d", sm.IngredientGroups[0].Phase, len(sm.IngredientGroups[0].Lines))
 	}
-	if sm.IngredientGroups[1].Phase != "finishes" || len(sm.IngredientGroups[1].Lines) != 2 {
+	if sm.IngredientGroups[1].Phase != "Finishes" || len(sm.IngredientGroups[1].Lines) != 2 {
 		t.Errorf("group 1: got phase=%q lines=%d", sm.IngredientGroups[1].Phase, len(sm.IngredientGroups[1].Lines))
 	}
 	_, other := ParseIngredients(sm.IngredientGroups)
@@ -137,8 +137,8 @@ func TestDetectSections_ColonSubsection_MultiWord_RoutesToOther(t *testing.T) {
 	if len(sm.IngredientGroups) != 2 {
 		t.Fatalf("expected 2 ingredient groups, got %d", len(sm.IngredientGroups))
 	}
-	if sm.IngredientGroups[1].Phase != "cheese naan" {
-		t.Errorf("expected phase 'cheese naan', got %q", sm.IngredientGroups[1].Phase)
+	if sm.IngredientGroups[1].Phase != "Cheese Naan" {
+		t.Errorf("expected phase 'Cheese Naan', got %q", sm.IngredientGroups[1].Phase)
 	}
 	_, other := ParseIngredients(sm.IngredientGroups)
 	if len(other) != 1 {
@@ -173,12 +173,12 @@ func TestDetectSections_Scald_NoColon_RecognisedAsSubsection(t *testing.T) {
 	}
 	found := false
 	for _, g := range sm.IngredientGroups {
-		if g.Phase == "scald" {
+		if g.Phase == "Scald" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected a group with phase 'scald'")
+		t.Error("expected a group with phase 'Scald'")
 	}
 }
 
@@ -187,12 +187,12 @@ func TestDetectSections_Tangzhong_NoColon_RecognisedAsSubsection(t *testing.T) {
 	sm := DetectSections(input)
 	found := false
 	for _, g := range sm.IngredientGroups {
-		if g.Phase == "tangzhong" {
+		if g.Phase == "Tangzhong" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected a group with phase 'tangzhong'")
+		t.Error("expected a group with phase 'Tangzhong'")
 	}
 }
 
@@ -201,11 +201,131 @@ func TestDetectSections_Yudane_NoColon_RecognisedAsSubsection(t *testing.T) {
 	sm := DetectSections(input)
 	found := false
 	for _, g := range sm.IngredientGroups {
-		if g.Phase == "yudane" {
+		if g.Phase == "Yudane" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected a group with phase 'yudane'")
+		t.Error("expected a group with phase 'Yudane'")
+	}
+}
+
+func TestDetectSections_GenericHeader_NoColonRequired(t *testing.T) {
+	// "Main Dough" and "Stiff Sweet Starter" have no colon and don't match any of the
+	// hand-listed named patterns — they must still be detected as headers.
+	input := "Wonder Bread\n\nIngredients\nStiff Sweet Starter\n15 g sourdough starter\n15 g honey\n\nMain Dough\n575 g bread flour\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 2 {
+		t.Fatalf("expected 2 ingredient groups, got %d", len(sm.IngredientGroups))
+	}
+	if sm.IngredientGroups[0].Phase != "Stiff Sweet Starter" {
+		t.Errorf("expected verbatim phase 'Stiff Sweet Starter', got %q", sm.IngredientGroups[0].Phase)
+	}
+	if sm.IngredientGroups[1].Phase != "Main Dough" {
+		t.Errorf("expected verbatim phase 'Main Dough', got %q", sm.IngredientGroups[1].Phase)
+	}
+}
+
+func TestDetectSections_NamedPattern_VerbatimCasePreserved(t *testing.T) {
+	// Named patterns (e.g. "tangzhong") still recognize case-insensitively, but the returned
+	// phase text keeps the original casing from the source instead of a lowercased constant.
+	input := "Bread\n\nIngredients\nTangzhong\n35 g flour\n150 ml milk\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 1 {
+		t.Fatalf("expected 1 ingredient group, got %d", len(sm.IngredientGroups))
+	}
+	if sm.IngredientGroups[0].Phase != "Tangzhong" {
+		t.Errorf("expected verbatim phase 'Tangzhong', got %q", sm.IngredientGroups[0].Phase)
+	}
+}
+
+func TestDetectSections_BackReferenceLine_NotMisdetectedAsHeader(t *testing.T) {
+	// "All of the stiff sweet starter from above" has no quantity either, but at 6 words it's
+	// over the header-detection word cap — it must stay an ingredient line, not become a new
+	// (spurious) subsection.
+	input := "Bread\n\nIngredients\nMain Dough\nAll of the stiff sweet starter from above\n225 g water\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 1 {
+		t.Fatalf("expected 1 ingredient group (no spurious header split), got %d", len(sm.IngredientGroups))
+	}
+	if len(sm.IngredientGroups[0].Lines) != 2 {
+		t.Errorf("expected 2 lines in the single group, got %d: %v", len(sm.IngredientGroups[0].Lines), sm.IngredientGroups[0].Lines)
+	}
+}
+
+func TestDetectSections_NoQtyIngredientLine_NotMisdetectedAsHeader(t *testing.T) {
+	// "Salt to taste" is short (3 words) and has no digits — exactly the shape a naive
+	// word-count-only heuristic would misdetect as a header. It's a real quantity-less
+	// ingredient line (noQtyPatterns) and must not split the group.
+	input := "Bread\n\nIngredients\n200 g flour\nSalt to taste\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 1 {
+		t.Fatalf("expected 1 ingredient group, got %d", len(sm.IngredientGroups))
+	}
+	if len(sm.IngredientGroups[0].Lines) != 2 {
+		t.Errorf("expected 2 lines (flour + salt to taste), got %d: %v", len(sm.IngredientGroups[0].Lines), sm.IngredientGroups[0].Lines)
+	}
+}
+
+func TestDetectSections_ColonHeader_BypassesTitleCase(t *testing.T) {
+	// A trailing colon is strong header evidence on its own — must work even in sentence
+	// case, which the title-case requirement would otherwise reject.
+	input := "Bread\n\nIngredients\n200 g flour\n\nFor serving:\nHoney\nButter\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 2 {
+		t.Fatalf("expected 2 ingredient groups, got %d", len(sm.IngredientGroups))
+	}
+	if sm.IngredientGroups[1].Phase != "For serving" {
+		t.Errorf("expected verbatim phase 'For serving', got %q", sm.IngredientGroups[1].Phase)
+	}
+}
+
+func TestDetectSections_ConsecutiveBareTitleCaseIngredients_NotDeleted(t *testing.T) {
+	// "Olive Oil", "Kosher Salt", "Egg Wash" are genuinely Title Case (common in some
+	// recipe-site formatting) and would each look like a header in isolation. A run of them
+	// with nothing else between them must NOT delete them — they must survive as ordinary
+	// ingredient lines under the preceding group, matching pre-feature behavior.
+	input := "Bread\n\nIngredients\n500g Bread Flour\n300g Water\nOlive Oil\nKosher Salt\nEgg Wash\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 1 {
+		t.Fatalf("expected 1 ingredient group (no spurious headers), got %d: %+v", len(sm.IngredientGroups), sm.IngredientGroups)
+	}
+	lines := sm.IngredientGroups[0].Lines
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines (2 quantified + 3 bare), got %d: %v", len(lines), lines)
+	}
+	for _, want := range []string{"Olive Oil", "Kosher Salt", "Egg Wash"} {
+		found := false
+		for _, l := range lines {
+			if l == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q to survive as an ordinary ingredient line, got lines: %v", want, lines)
+		}
+	}
+}
+
+func TestDetectSections_SentenceCaseIngredients_NotMisdetectedAsHeaders(t *testing.T) {
+	// Bare ingredient lines in sentence case (only first word capitalized) like
+	// "Pinch of salt", "Olive oil", "Salt & pepper" must not be misdetected as
+	// headers. Real headers are Title Case ("Main Dough", "Stiff Sweet Starter").
+	input := "Bread\n\nIngredients\nMain Dough\n300g flour\n200g water\nOlive oil\nSalt & pepper\nPinch of salt\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 1 {
+		t.Fatalf("expected 1 ingredient group, got %d", len(sm.IngredientGroups))
+	}
+	if len(sm.IngredientGroups[0].Lines) != 5 {
+		t.Errorf("expected 5 ingredient lines, got %d: %v", len(sm.IngredientGroups[0].Lines), sm.IngredientGroups[0].Lines)
+	}
+	// Verify the sentence-case lines are present as ingredients, not as headers
+	lines := sm.IngredientGroups[0].Lines
+	expected := []string{"300g flour", "200g water", "Olive oil", "Salt & pepper", "Pinch of salt"}
+	for i, exp := range expected {
+		if i >= len(lines) || lines[i] != exp {
+			t.Errorf("line %d: expected %q, got %q", i, exp, lines[i])
+		}
 	}
 }

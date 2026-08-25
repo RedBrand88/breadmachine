@@ -20,3 +20,4 @@
 .claude/*.md
 .claude/agents/*.md
 .claude
+.worktrees
