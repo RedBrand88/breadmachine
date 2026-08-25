@@ -87,13 +87,36 @@ func isBaseIngredient(name string) bool {
 // cauliflower, chickpea, tapioca). Recipes with no matching base ingredient get
 // zero percentages.
 func CalculateBakerPercentages(ingredients []Ingredient) {
+	explicitFlourPhases := map[string]bool{
+		"dough": true, "": true, "starter build": true, "levain": true, "starter": true,
+		"pre-ferment": true, "final dough": true, "scald": true, "tangzhong": true, "yudane": true,
+	}
+	explicitNonFlourPhases := map[string]bool{
+		"topping": true, "filling": true, "sauce": true, "pesto": true,
+	}
+
+	// Tier 3: for phases not explicitly known, does any ingredient in that phase group
+	// actually look like flour? Decided from content, not from the phase name.
+	phaseHasBase := map[string]bool{}
+	for _, ing := range ingredients {
+		key := strings.ToLower(string(ing.Phase))
+		if explicitFlourPhases[key] || explicitNonFlourPhases[key] {
+			continue
+		}
+		if isBaseIngredient(ing.IngredientName) {
+			phaseHasBase[key] = true
+		}
+	}
+
 	isFlourPhase := func(p Phase) bool {
-		switch strings.ToLower(string(p)) {
-		case "dough", "scald", "tangzhong", "yudane", "starter build", "levain", "final dough", "":
+		key := strings.ToLower(string(p))
+		if explicitFlourPhases[key] {
 			return true
-		default:
+		}
+		if explicitNonFlourPhases[key] {
 			return false
 		}
+		return phaseHasBase[key]
 	}
 
 	var totalBase float64

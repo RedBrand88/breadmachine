@@ -119,3 +119,40 @@ func TestCalculateBakerPercentages_PhaseMatchIsCaseInsensitive(t *testing.T) {
 		t.Errorf("water: expected 50%%, got %v", ingredients[1].BakerPercentage)
 	}
 }
+
+func TestCalculateBakerPercentages_UnrecognizedPhase_WithFlour_Counted(t *testing.T) {
+	// A phase not in the explicit lists (e.g. "Stiff Sweet Starter") must still count toward
+	// the base when it actually contains a flour-like ingredient.
+	ingredients := []Ingredient{
+		ing("bread flour", 60, "Stiff Sweet Starter"),
+		ing("bread flour", 575, PhaseDough),
+	}
+
+	CalculateBakerPercentages(ingredients)
+
+	if !almostEqual(ingredients[0].BakerPercentage, (60.0/635.0)*100) {
+		t.Errorf("stiff sweet starter flour: expected %.2f%%, got %v", (60.0/635.0)*100, ingredients[0].BakerPercentage)
+	}
+	if !almostEqual(ingredients[1].BakerPercentage, (575.0/635.0)*100) {
+		t.Errorf("main dough flour: expected %.2f%%, got %v", (575.0/635.0)*100, ingredients[1].BakerPercentage)
+	}
+}
+
+func TestCalculateBakerPercentages_UnrecognizedPhase_NoFlour_Zeroed(t *testing.T) {
+	// A phase not in the explicit lists, with no flour-like ingredient, must not count toward
+	// the base and must itself get 0% — regardless of what it's named. This is the case that
+	// broke the earlier "default everything unrecognized to flour" approach.
+	ingredients := []Ingredient{
+		ing("flour", 500, PhaseDough),
+		ing("bell pepper", 100, "Roasted Pepper"),
+	}
+
+	CalculateBakerPercentages(ingredients)
+
+	if !almostEqual(ingredients[0].BakerPercentage, 100) {
+		t.Errorf("dough flour: expected 100%% (roasted pepper must not inflate base), got %v", ingredients[0].BakerPercentage)
+	}
+	if !almostEqual(ingredients[1].BakerPercentage, 0) {
+		t.Errorf("bell pepper: expected 0%%, got %v", ingredients[1].BakerPercentage)
+	}
+}
