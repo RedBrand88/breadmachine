@@ -272,6 +272,27 @@ func TestParseIngredients_ToppingPhaseSection_RoutesToOther(t *testing.T) {
 	}
 }
 
+func TestParseIngredients_WordBoundaryNonFlourPhase_StreuselTopping_RoutesToOther(t *testing.T) {
+	// "Streusel Topping" doesn't exact-match the tier-2 list, but contains "topping" as a
+	// whole word — must still be excluded from dough/flour totals even though it legitimately
+	// contains flour (streusel is not part of the bread dough system).
+	groups := []IngredientGroup{
+		{Phase: "Streusel Topping", Lines: []string{"60 g flour", "40 g butter", "40 g sugar"}},
+	}
+	dough, other := ParseIngredients(groups)
+	if len(dough) != 0 {
+		t.Errorf("expected 0 dough ingredients, got %d", len(dough))
+	}
+	if len(other) != 3 {
+		t.Errorf("expected 3 other ingredients, got %d", len(other))
+	}
+	for _, o := range other {
+		if o.Phase != "Streusel Topping" {
+			t.Errorf("expected verbatim phase 'Streusel Topping', got %q", o.Phase)
+		}
+	}
+}
+
 func TestParseIngredients_BulletStripped(t *testing.T) {
 	for _, bullet := range []string{"- 200g flour", "* 200g flour", "• 200g flour", "— 200g flour"} {
 		dough, _ := ParseIngredients(doughLines(bullet))

@@ -73,6 +73,22 @@ func TestCalculateBakerPercentages_NonFlourPhaseExcludedFromBaseAndZeroed(t *tes
 	}
 }
 
+func TestCalculateBakerPercentages_WordBoundaryNonFlourPhase_StreuselTopping_Excluded(t *testing.T) {
+	ingredients := []Ingredient{
+		ing("flour", 500, PhaseDough),
+		ing("streusel flour", 60, "Streusel Topping"),
+	}
+
+	CalculateBakerPercentages(ingredients)
+
+	if !almostEqual(ingredients[0].BakerPercentage, 100) {
+		t.Errorf("dough flour: expected 100%% (streusel topping must not inflate base), got %v", ingredients[0].BakerPercentage)
+	}
+	if !almostEqual(ingredients[1].BakerPercentage, 0) {
+		t.Errorf("streusel topping flour: expected 0%%, got %v", ingredients[1].BakerPercentage)
+	}
+}
+
 func TestCalculateBakerPercentages_NoBaseIngredientYieldsAllZero(t *testing.T) {
 	ingredients := []Ingredient{
 		ing("water", 300, PhaseDough),

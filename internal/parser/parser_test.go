@@ -250,8 +250,8 @@ func TestParse_SourdoughWonderBread_NamedSubsectionsPreservedVerbatim(t *testing
 	if phases["Tangzhong"] != 2 {
 		t.Errorf("expected 2 ingredients phased 'Tangzhong', got %d (phases: %v)", phases["Tangzhong"], phases)
 	}
-	if phases["Main Dough"] == 0 {
-		t.Errorf("expected ingredients phased 'Main Dough', got phases: %v", phases)
+	if phases["Main Dough"] != 8 {
+		t.Errorf("expected 8 ingredients phased 'Main Dough', got %d (phases: %v)", phases["Main Dough"], phases)
 	}
 
 	if len(dto.OtherIngredients) != 0 {

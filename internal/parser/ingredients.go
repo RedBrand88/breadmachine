@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	reQuantityAnchor  = regexp.MustCompile(`^(\d+\s+\d+/\d+|\d+(?:\.\d*)?(?:/\d+)?)\s*`)
-	reLeadingParen    = regexp.MustCompile(`^\([^)]*\)\s*`)
-	reBulletPrefix    = regexp.MustCompile(`^[-*•—–]\s+`)
-	reCheckboxPrefix  = regexp.MustCompile(`^[▢□☐]\s*`)
+	reQuantityAnchor = regexp.MustCompile(`^(\d+\s+\d+/\d+|\d+(?:\.\d*)?(?:/\d+)?)\s*`)
+	reLeadingParen   = regexp.MustCompile(`^\([^)]*\)\s*`)
+	reBulletPrefix   = regexp.MustCompile(`^[-*•—–]\s+`)
+	reCheckboxPrefix = regexp.MustCompile(`^[▢□☐]\s*`)
 	reCrossRef       = regexp.MustCompile(`(?i)\s*(from the build above|see note|recipe follows|from above)\s*`)
 	reToppingLine    = regexp.MustCompile(`(?i)\btopping\b`)
 )
@@ -40,13 +40,10 @@ var explicitFlourPhases = map[string]bool{
 	"yudane":        true,
 }
 
-// explicitNonFlourPhases are phase names known to never contribute, regardless of content.
-var explicitNonFlourPhases = map[string]bool{
-	"topping": true,
-	"filling": true,
-	"sauce":   true,
-	"pesto":   true,
-}
+// reExplicitNonFlourPhase matches phase names known to never contribute to baker's-% flour
+// totals as a whole word within the phase name (e.g. "Streusel Topping" matches "topping"),
+// not just when the phase name equals one of these words exactly.
+var reExplicitNonFlourPhase = regexp.MustCompile(`(?i)\b(topping|filling|sauce|pesto)\b`)
 
 // baseIngredientKeywords mirrors models.baseIngredientKeywords (models/recipe.go). Kept as a
 // small local copy since internal/parser deliberately doesn't import models (pure text→DTO layer,
@@ -62,7 +59,7 @@ func classifyPhase(phase string, dtos []IngredientDTO) bool {
 	if explicitFlourPhases[lower] {
 		return true
 	}
-	if explicitNonFlourPhases[lower] {
+	if reExplicitNonFlourPhase.MatchString(phase) {
 		return false
 	}
 	for _, d := range dtos {

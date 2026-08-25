@@ -267,6 +267,47 @@ func TestDetectSections_NoQtyIngredientLine_NotMisdetectedAsHeader(t *testing.T)
 	}
 }
 
+func TestDetectSections_ColonHeader_BypassesTitleCase(t *testing.T) {
+	// A trailing colon is strong header evidence on its own — must work even in sentence
+	// case, which the title-case requirement would otherwise reject.
+	input := "Bread\n\nIngredients\n200 g flour\n\nFor serving:\nHoney\nButter\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 2 {
+		t.Fatalf("expected 2 ingredient groups, got %d", len(sm.IngredientGroups))
+	}
+	if sm.IngredientGroups[1].Phase != "For serving" {
+		t.Errorf("expected verbatim phase 'For serving', got %q", sm.IngredientGroups[1].Phase)
+	}
+}
+
+func TestDetectSections_ConsecutiveBareTitleCaseIngredients_NotDeleted(t *testing.T) {
+	// "Olive Oil", "Kosher Salt", "Egg Wash" are genuinely Title Case (common in some
+	// recipe-site formatting) and would each look like a header in isolation. A run of them
+	// with nothing else between them must NOT delete them — they must survive as ordinary
+	// ingredient lines under the preceding group, matching pre-feature behavior.
+	input := "Bread\n\nIngredients\n500g Bread Flour\n300g Water\nOlive Oil\nKosher Salt\nEgg Wash\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 1 {
+		t.Fatalf("expected 1 ingredient group (no spurious headers), got %d: %+v", len(sm.IngredientGroups), sm.IngredientGroups)
+	}
+	lines := sm.IngredientGroups[0].Lines
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines (2 quantified + 3 bare), got %d: %v", len(lines), lines)
+	}
+	for _, want := range []string{"Olive Oil", "Kosher Salt", "Egg Wash"} {
+		found := false
+		for _, l := range lines {
+			if l == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q to survive as an ordinary ingredient line, got lines: %v", want, lines)
+		}
+	}
+}
+
 func TestDetectSections_SentenceCaseIngredients_NotMisdetectedAsHeaders(t *testing.T) {
 	// Bare ingredient lines in sentence case (only first word capitalized) like
 	// "Pinch of salt", "Olive oil", "Salt & pepper" must not be misdetected as
