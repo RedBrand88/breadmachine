@@ -47,6 +47,35 @@ var bakersPctPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)baker'?s\s+%`),
 }
 
+// lowerConnectors are short words skipped when checking title case, so
+// "Main Dough" and "For the Pesto" style headers don't need every word capitalized.
+var lowerConnectors = map[string]bool{
+	"of": true, "the": true, "and": true, "a": true, "an": true,
+	"in": true, "on": true, "to": true, "or": true, "for": true, "&": true,
+}
+
+// looksLikeTitleCase reports whether every significant word (i.e. not a short
+// connector) starts with an uppercase letter. Real subsection headers in these
+// recipes are reliably Title Case ("Main Dough", "Stiff Sweet Starter"); bare
+// ingredient references are sentence-case (only the line's first word
+// capitalized, e.g. "Pinch of salt", "Olive oil") — this is what lets the
+// generic fallback tell them apart.
+func looksLikeTitleCase(line string) bool {
+	words := strings.Fields(line)
+	significant, capped := 0, 0
+	for _, w := range words {
+		if lowerConnectors[strings.ToLower(w)] {
+			continue
+		}
+		significant++
+		r, _ := utf8.DecodeRuneInString(w)
+		if unicode.IsUpper(r) {
+			capped++
+		}
+	}
+	return significant > 0 && capped == significant
+}
+
 // DetectSections parses a normalised recipe string into a SectionMap.
 func DetectSections(cleaned string) SectionMap {
 	sm := SectionMap{}
@@ -223,17 +252,19 @@ func matchIngredientSubsection(line string) (string, bool) {
 
 	// Generic fallback: a short (1-4 word) line with no digits, that isn't a known
 	// quantity-less ingredient phrasing ("salt to taste", "for dusting", etc. — see
-	// noQtyPatterns/isNoQtyLine in ingredients.go, same package), is treated as a header.
-	// No colon required. Verbatim text (trailing colon/dash stripped) is returned.
+	// noQtyPatterns/isNoQtyLine in ingredients.go, same package), AND is in Title Case,
+	// is treated as a header. No colon required. Verbatim text (trailing colon/dash
+	// stripped) is returned.
 	//
-	// Known accepted residual risk: a bare short ingredient line with no quantity and no
-	// unit at all (e.g. just "Butter" on its own line) can still be misdetected as a header —
-	// there's nothing left to distinguish it. This is the accepted tradeoff of broadening
-	// detection rather than requiring an exact pattern match for everything.
+	// The Title Case requirement distinguishes real section headers ("Main Dough",
+	// "Stiff Sweet Starter") from bare ingredient references in sentence case
+	// ("Pinch of salt", "Olive oil", "Handful of basil leaves").
 	if !strings.ContainsAny(line, "0123456789") && !isNoQtyLine(line) {
 		name := strings.TrimRight(strings.TrimSpace(line), "-–: \t")
 		if words := strings.Fields(name); len(words) >= 1 && len(words) <= 4 {
-			return name, true
+			if looksLikeTitleCase(name) {
+				return name, true
+			}
 		}
 	}
 

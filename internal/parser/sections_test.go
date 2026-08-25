@@ -266,3 +266,25 @@ func TestDetectSections_NoQtyIngredientLine_NotMisdetectedAsHeader(t *testing.T)
 		t.Errorf("expected 2 lines (flour + salt to taste), got %d: %v", len(sm.IngredientGroups[0].Lines), sm.IngredientGroups[0].Lines)
 	}
 }
+
+func TestDetectSections_SentenceCaseIngredients_NotMisdetectedAsHeaders(t *testing.T) {
+	// Bare ingredient lines in sentence case (only first word capitalized) like
+	// "Pinch of salt", "Olive oil", "Salt & pepper" must not be misdetected as
+	// headers. Real headers are Title Case ("Main Dough", "Stiff Sweet Starter").
+	input := "Bread\n\nIngredients\nMain Dough\n300g flour\n200g water\nOlive oil\nSalt & pepper\nPinch of salt\n\nInstructions\nMix."
+	sm := DetectSections(input)
+	if len(sm.IngredientGroups) != 1 {
+		t.Fatalf("expected 1 ingredient group, got %d", len(sm.IngredientGroups))
+	}
+	if len(sm.IngredientGroups[0].Lines) != 5 {
+		t.Errorf("expected 5 ingredient lines, got %d: %v", len(sm.IngredientGroups[0].Lines), sm.IngredientGroups[0].Lines)
+	}
+	// Verify the sentence-case lines are present as ingredients, not as headers
+	lines := sm.IngredientGroups[0].Lines
+	expected := []string{"300g flour", "200g water", "Olive oil", "Salt & pepper", "Pinch of salt"}
+	for i, exp := range expected {
+		if i >= len(lines) || lines[i] != exp {
+			t.Errorf("line %d: expected %q, got %q", i, exp, lines[i])
+		}
+	}
+}
