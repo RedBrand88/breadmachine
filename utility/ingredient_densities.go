@@ -47,6 +47,10 @@ var ingredientDensities = []densityEntry{
 	{"rolled oats", 0.36},
 	{"cornmeal", 0.60},
 	{"sourdough", 1.0},
+	// tangzhong: cooked flour+milk/water roux, much more liquid-dominant than a
+	// sourdough starter (~1:5 flour:liquid vs ~1:1) — close to water/milk density,
+	// slightly higher due to gelatinized starch thickening it.
+	{"tangzhong", 1.05},
 	// legumes — specific first
 	{"red lentils", 0.79},
 	{"green lentils", 0.79},
