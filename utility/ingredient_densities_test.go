@@ -61,6 +61,23 @@ func TestLookupDensity_Blueberries_OneCupIsAboutOneFiftyGrams(t *testing.T) {
 	}
 }
 
+func TestLookupDensity_Tangzhong_OneHundredGramsIsAboutNinetyFiveMilliliters(t *testing.T) {
+	// Regression: tangzhong had no density entry at all, so a recipe storing it
+	// in grams couldn't be converted to cups/mL for display (bread-machine.dev
+	// issue: g-to-cups toggle left tangzhong stuck at its raw gram value).
+	// Tangzhong is a cooked flour+liquid roux, much more liquid-dominant than a
+	// sourdough starter — density should sit close to water/milk (~1.0-1.1 g/mL).
+	d := LookupDensity("tangzhong")
+	if d == 0 {
+		t.Fatal("tangzhong density should be non-zero")
+	}
+	grams := 100.0
+	ml := grams / d
+	if ml < 90 || ml > 105 {
+		t.Errorf("100 g tangzhong should be ~95 mL, got %.1f mL (density=%.3f)", ml, d)
+	}
+}
+
 func TestLookupDensity_NewIngredients(t *testing.T) {
 	cases := []struct {
 		name    string
